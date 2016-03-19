@@ -10,6 +10,7 @@ The rest of the protocol is as follows:
 
 | Line starts with  | Meaning | Example |
 | ----------------- | ------- | ------- |
+| #  | First line and protocol metadata | #sensorthing |
 | $  | Message  | $coolSensorDevice/sensor 34.2 |
 | @  | Persistent message  | @coolSensorDevice/sensor 34.2 |
 | <  | A subscription. Anything on the message of this topic is sent to the device | <device/command |
