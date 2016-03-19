@@ -8,9 +8,11 @@ If the device's first character is "#" it assumes it follows protocol.
 The content after # is currently only parsed as the name. Here would be a nice place to put other meta data such as protocol version and such.
 The rest of the protocol is as follows:
 
-|Line starts with|Meaning|Example|
-|$|Message|@coolSensorDevice/sensor 34.2
-|@|Persistent message|@coolSensorDevice/sensor 34.2
-|<|A subscription. Anything on the message of this topic is sent to the device|<device/command|
+| Line starts with  | Meaning | Example |
+| ----------------- | ------- | ------- |
+| $  | Message  | $coolSensorDevice/sensor 34.2 |
+| @  | Persistent message  | @coolSensorDevice/sensor 34.2 |
+| <  | Message  | A subscription. Anything on the message of this topic is sent to the device | <device/command |
+
 
 It tries to connect to MQTT broker on 127.0.0.1
