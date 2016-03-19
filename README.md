@@ -12,7 +12,7 @@ The rest of the protocol is as follows:
 | ----------------- | ------- | ------- |
 | $  | Message  | $coolSensorDevice/sensor 34.2 |
 | @  | Persistent message  | @coolSensorDevice/sensor 34.2 |
-| <  | Message  | A subscription. Anything on the message of this topic is sent to the device | <device/command |
+| <  | A subscription. Anything on the message of this topic is sent to the device | <device/command |
 
 
 It tries to connect to MQTT broker on 127.0.0.1
