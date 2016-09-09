@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package mqtt.serial.bridge;
+package serial.bridge;
 
 import java.util.Date;
 import java.util.logging.Level;
@@ -20,16 +20,16 @@ import org.fusesource.mqtt.client.QoS;
  *
  * @author Gussoh
  */
-public class SerialPortHandler {
+public class SerialConnection {
 
     final String portName;
     final MQTTSerialBridge bridge;
     final SerialPort serialPort;
-    String name = null;
+    private String name = null;
     
     StringBuilder incomingLine = new StringBuilder();
     
-    public SerialPortHandler(String portName, final MQTTSerialBridge bridge) throws SerialPortException, SerialPortTimeoutException, IncorrectDeviceException {
+    public SerialConnection(String portName, final MQTTSerialBridge bridge) throws SerialPortException, SerialPortTimeoutException, IncorrectDeviceException {
         this.portName = portName;
         this.bridge = bridge;
         serialPort = new SerialPort(portName);
@@ -40,8 +40,8 @@ public class SerialPortHandler {
                 SerialPort.STOPBITS_1,
                 SerialPort.PARITY_NONE);
 
-        serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
-        //serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN | SerialPort.FLOWCONTROL_RTSCTS_OUT);
+        //serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
+        serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN | SerialPort.FLOWCONTROL_RTSCTS_OUT);
 
         System.out.println("Connecting to " + portName);
         
@@ -65,7 +65,7 @@ public class SerialPortHandler {
                                 if (incomingLine.length() > 0) {
                                     String line = incomingLine.toString();
                                     incomingLine = new StringBuilder();
-                                    parseLine(line);   
+                                    parseLine(line.trim());   
                                 }
                             } else {
                                 incomingLine.append(receivedData.charAt(i));
@@ -76,11 +76,11 @@ public class SerialPortHandler {
                         try {
                             serialPort.closePort();
                         } catch (SerialPortException ex1) {
-                            Logger.getLogger(SerialPortHandler.class.getName()).log(Level.SEVERE, null, ex1);
+                            Logger.getLogger(SerialConnection.class.getName()).log(Level.SEVERE, null, ex1);
                         }
                         System.err.println("Error in receiving string from: " + name + "\n" + ex);
                         
-                        bridge.errorOccured(SerialPortHandler.this);
+                        bridge.errorOccured(SerialConnection.this);
                     }
                 }
             }
@@ -89,12 +89,13 @@ public class SerialPortHandler {
     
     private void parseLine(final String line) {
         if (name == null) {
-            name = line;
+            name = line.trim();
             System.out.println("Serial port got name: " + name);
             return;
         }
-        System.out.println(name + ": " + line);
-
+        System.out.print(name + ": ");
+        System.out.println(line);
+        
         if (line.startsWith("<")) { // new subscription
             bridge.subscribe(this, line.substring(1));
         } else if (line.startsWith("@") || line.startsWith("$")) { // mqtt! @ is persist, $ is not persised
@@ -110,12 +111,12 @@ public class SerialPortHandler {
 
                 @Override
                 public void onSuccess(Void t) {
-                    System.out.println("-- SENT " + (line.startsWith("@") ? "persistent " : "") + "TO MQTT  --");
+                    System.out.println(" -- SENT " + (line.startsWith("@") ? "persistent " : "") + "TO MQTT  --");
                 }
 
                 @Override
                 public void onFailure(Throwable thrwbl) {
-                    System.err.println("Could not send to MQTT:\n" + thrwbl);
+                    System.err.println(" Could not send to MQTT:\n" + thrwbl);
                 }
             });
         }
@@ -130,7 +131,7 @@ public class SerialPortHandler {
             try {
                 serialPort.closePort();
             } catch (SerialPortException ex1) {
-                Logger.getLogger(SerialPortHandler.class.getName()).log(Level.SEVERE, null, ex1);
+                Logger.getLogger(SerialConnection.class.getName()).log(Level.SEVERE, null, ex1);
             }
             System.err.println("Error in sending string from to: " + name + "\n" + ex);
 
@@ -142,11 +143,20 @@ public class SerialPortHandler {
         try {
             serialPort.closePort();
         } catch (SerialPortException ex) {
-            Logger.getLogger(SerialPortHandler.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(SerialConnection.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
     String getPortName() {
         return portName;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public String toString() {
+        return getName();
     }
 }

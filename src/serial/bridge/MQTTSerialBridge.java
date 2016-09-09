@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package mqtt.serial.bridge;
+package serial.bridge;
 
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -34,7 +34,7 @@ public class MQTTSerialBridge {
     
     private static final String PRESENCE_TOPIC = "mqtt-bridge-presence";
     
-    private HashMap<String, List<SerialPortHandler>> subscriptions = new HashMap<>();
+    private HashMap<String, List<SerialConnection>> subscriptions = new HashMap<>();
     
     /**
      * Things which are following the protocol
@@ -89,10 +89,10 @@ public class MQTTSerialBridge {
             @Override
             public void onPublish(UTF8Buffer topic, Buffer payload, Runnable ack) {
 
-                List<SerialPortHandler> subscribers = subscriptions.get(topic.toString());
-                System.out.println("Incoming message: " + payload.toString() + " subscribers: " + subscribers.toString());
+                List<SerialConnection> subscribers = subscriptions.get(topic.toString());
+                System.out.println("Incoming message: " + payload.toString() + " subscribers: " + subscribers);
                 if (subscribers != null) {
-                    for (SerialPortHandler subscriber : subscribers) {
+                    for (SerialConnection subscriber : subscribers) {
                         subscriber.onMqttMessage(topic.toString(), payload.toString());
                     }
                 }
@@ -142,7 +142,7 @@ public class MQTTSerialBridge {
                     }
                     
                     try {
-                        new SerialPortHandler(portName, this);
+                        new SerialConnection(portName, this);
                         handledSerialPorts.add(portName);
                     } catch (SerialPortTimeoutException e) {
                         System.out.println("No answer on port " + portName);
@@ -165,8 +165,8 @@ public class MQTTSerialBridge {
         return mqttConnection;
     }
 
-    void subscribe(SerialPortHandler subscriber, final String topic) {
-        List<SerialPortHandler> subscribers = subscriptions.get(topic);
+    void subscribe(final SerialConnection subscriber, final String topic) {
+        List<SerialConnection> subscribers = subscriptions.get(topic);
         if (subscribers == null) {
             subscribers = new ArrayList<>();
             subscribers.add(subscriber);
@@ -179,7 +179,7 @@ public class MQTTSerialBridge {
 
             @Override
             public void onSuccess(byte[] t) {
-                System.out.println("Subscribed to topic: " + topic);
+                System.out.println(subscriber.getName() + " subscribed to topic: " + topic);
             }
 
             @Override
@@ -189,7 +189,7 @@ public class MQTTSerialBridge {
         });
     }
 
-    void errorOccured(SerialPortHandler serialPortHandler) {
+    void errorOccured(SerialConnection serialPortHandler) {
         handledSerialPorts.remove(serialPortHandler.getPortName());
     }
 }
