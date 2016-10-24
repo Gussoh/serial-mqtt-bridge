@@ -17,5 +17,3 @@ The rest of the protocol is as follows:
 
 
 It tries to connect to MQTT broker on 127.0.0.1
-
-Name does not really work in stdout and subscriptions does not seem to work.
