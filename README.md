@@ -6,8 +6,7 @@ It connects with 9600 bps.
 
 If the device's first characters are "###" it assumes it follows protocol and starts parsing. 
 The format of the first line is this: First "###". Until the first comma the content is parsed as the units name. After the next commas is the protocol version.
-Example:
-###My device,1###
+Example: ###My device,1###
 Name: My device,
 Protocol version: 1 (1 is the only version currently available)
 
