@@ -5,6 +5,9 @@
  */
 package serial.bridge;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -33,21 +36,20 @@ public class SerialConnection {
         this.portName = portName;
         this.bridge = bridge;
         serialPort = new SerialPort(portName);
+        
+        System.out.println("Connecting to " + portName);
         serialPort.openPort();
-            
         serialPort.setParams(SerialPort.BAUDRATE_9600,
                 SerialPort.DATABITS_8,
                 SerialPort.STOPBITS_1,
                 SerialPort.PARITY_NONE);
-
-        //serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
         serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN | SerialPort.FLOWCONTROL_RTSCTS_OUT);
-
-        System.out.println("Connecting to " + portName);
+        serialPort.closePort(); // try close and open again to see if we can get in sync.. dont know why it doesnt always work.
+        serialPort.openPort();
         
-        String firstChar = serialPort.readString(1, 5000);
-        if (!firstChar.equalsIgnoreCase("#")) { // Make sure it is one of our arduinos
-            String totalData = firstChar + serialPort.readString();
+        String firstChars = serialPort.readString(3, 5000);
+        if (!firstChars.equalsIgnoreCase("###")) { // Make sure it is one of our arduinos or similar.
+            String totalData = firstChars + serialPort.readString();
             serialPort.closePort();
             throw new IncorrectDeviceException(totalData);
         }
@@ -87,38 +89,61 @@ public class SerialConnection {
         }, SerialPort.MASK_RXCHAR);
     }
     
-    private void parseLine(final String line) {
-        if (name == null) {
-            name = line.trim();
+    private void parseLine(String line) throws ProtocolMalformedException {
+        final String time = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mmX").withZone(ZoneOffset.UTC).format(Instant.now());
+        
+        line = line.trim();
+        if (name == null) { // first line
+            if (!line.endsWith("###")) {
+                System.out.println("Protocol malformed. Missing ### in the end of the first line. ");
+                try {
+                    serialPort.closePort();
+                } catch (SerialPortException ex) {
+                }
+                throw new ProtocolMalformedException("Missing ### in the end of the first line. ");
+            }
+            line = line.substring(0, line.length() - 3); // remove the last ###
+            String[] parts = line.split(",");
+            if (parts.length < 2) {
+                throw new ProtocolMalformedException("Missing name or protocol identifier");
+            }
+            name = parts[0];
+            String versionStr = parts[1];
+            if (!versionStr.equals("1")) {
+                throw new ProtocolMalformedException("Can not understand protocol version: " + versionStr);
+            }
             System.out.println("Serial port got name: " + name);
             return;
         }
-        System.out.print(name + ": ");
+        System.out.print(time + " " + name + ": ");
         System.out.println(line);
         
-        if (line.startsWith("<")) { // new subscription
-            bridge.subscribe(this, line.substring(1));
-        } else if (line.startsWith("@") || line.startsWith("$")) { // mqtt! @ is persist, $ is not persised
-            String[] split = line.substring(1).split(" "); // remove indicator char and separate between topic and message
-            if (split.length != 2) {
-                System.out.println("Incorrect format. Two sections was: " + split.length);
+        if (line.endsWith("###")) {
+            line = line.substring(0, line.length() - 3); // remove the last ###
+            if (line.startsWith("<")) { // new subscription
+                bridge.subscribe(this, line.substring(1));
+            } else if (line.startsWith("@") || line.startsWith("$")) { // mqtt! @ is persist, $ is not persised
+                String[] split = line.substring(1).split("##"); // remove indicator char and separate between topic and message
+                if (split.length != 2) {
+                    System.out.println("Incorrect format. Two sections was: " + split.length);
+                }
+
+                String topic = split[0].replace("$time", time);
+                String message = split[1].replace("$time", time);
+
+                bridge.getMqttConnection().publish(topic, message.getBytes(), QoS.AT_MOST_ONCE, line.startsWith("@"), new Callback<Void>() {
+
+                    @Override
+                    public void onSuccess(Void t) {
+                        System.out.println(time + " -- SENT TO MQTT  --");
+                    }
+
+                    @Override
+                    public void onFailure(Throwable thrwbl) {
+                        System.err.println(time + " Could not send to MQTT:\n" + thrwbl);
+                    }
+                });
             }
-            
-            String topic = split[0].replace("$time", new Date().toString());
-            String message = split[1].replace("$time", new Date().toString());
-            
-            bridge.getMqttConnection().publish(topic, message.getBytes(), QoS.AT_MOST_ONCE, line.startsWith("@"), new Callback<Void>() {
-
-                @Override
-                public void onSuccess(Void t) {
-                    System.out.println(" -- SENT " + (line.startsWith("@") ? "persistent " : "") + "TO MQTT  --");
-                }
-
-                @Override
-                public void onFailure(Throwable thrwbl) {
-                    System.err.println(" Could not send to MQTT:\n" + thrwbl);
-                }
-            });
         }
     }
     

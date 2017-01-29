@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
 import jssc.SerialPortList;
 import jssc.SerialPortTimeoutException;
 import org.fusesource.hawtbuf.Buffer;
@@ -30,7 +31,10 @@ import org.fusesource.mqtt.client.Topic;
  */
 public class MQTTSerialBridge {
 
+    static String mqttUrl = "tcp://localhost:1883";
+    
     private static CallbackConnection mqttConnection;
+    private Semaphore waitForMqttConnect = new Semaphore(0);
     
     private static final String PRESENCE_TOPIC = "mqtt-bridge-presence";
     
@@ -50,13 +54,16 @@ public class MQTTSerialBridge {
      * @param args the command line arguments
      */
     public static void main(String[] args) throws Exception {
+        if (args.length > 0) {
+            mqttUrl = args[0];
+        }
         new MQTTSerialBridge();
     }
 
     public MQTTSerialBridge() throws URISyntaxException, InterruptedException {
     
         MQTT mqtt = new MQTT();
-        mqtt.setHost("tcp://localhost:1883");
+        mqtt.setHost(mqttUrl);
         mqtt.setCleanSession(true);
         mqtt.setWillTopic(PRESENCE_TOPIC);
         mqtt.setWillMessage("disconnected");
@@ -74,6 +81,7 @@ public class MQTTSerialBridge {
                     @Override
                     public void onSuccess(Void t) {
                         System.out.println("Connected to MQTT");
+                        waitForMqttConnect.release();
                     }
 
                     @Override
@@ -122,8 +130,12 @@ public class MQTTSerialBridge {
             }
         });
 
-        System.out.println("Got past connecting!");
-
+        
+        if (waitForMqttConnect.availablePermits() > 0) {
+            System.out.println("Waiting for MQTT connection...");
+        }
+        waitForMqttConnect.acquire();
+        
         for (;;) {
             // List serial ports
             String[] portNames = SerialPortList.getPortNames();
@@ -141,16 +153,25 @@ public class MQTTSerialBridge {
                         continue;
                     }
                     
-                    try {
-                        new SerialConnection(portName, this);
-                        handledSerialPorts.add(portName);
-                    } catch (SerialPortTimeoutException e) {
-                        System.out.println("No answer on port " + portName);
-                        notHandledSerialPorts.add(portName);
-                    } catch (Exception e) {
-                        System.out.println("No good port: " + portName);
-                        System.out.println("Got exception: " + e + ", " + e.getMessage());
-                        notHandledSerialPorts.add(portName);
+                    int nrOfAttempts = 3;
+                    for (int i = 0; i < nrOfAttempts; i++) { 
+                        try {
+                            new SerialConnection(portName, this);
+                            handledSerialPorts.add(portName);
+                        } catch (SerialPortTimeoutException e) {
+                            System.out.println("No answer on port " + portName);
+                            notHandledSerialPorts.add(portName);
+                            break;
+                        } catch (Exception e) {
+                            System.out.println("No good port: " + portName);
+                            System.out.println("Got exception: " + e + ", " + e.getMessage());
+                            if (i == nrOfAttempts - 1) { // last attempt
+                                notHandledSerialPorts.add(portName);
+                            } else {
+                                System.out.println("Trying same port again...");
+                                Thread.sleep(2000);
+                            }
+                        }
                     }
                 }
                 
