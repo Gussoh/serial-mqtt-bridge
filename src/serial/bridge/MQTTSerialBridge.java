@@ -101,7 +101,7 @@ public class MQTTSerialBridge {
                 System.out.println("Incoming message: " + payload.toString() + " subscribers: " + subscribers);
                 if (subscribers != null) {
                     for (SerialConnection subscriber : subscribers) {
-                        subscriber.onMqttMessage(topic.toString(), payload.toString());
+                        subscriber.onMqttMessage(topic.toString(), payload.ascii().toString());
                     }
                 }
                 
