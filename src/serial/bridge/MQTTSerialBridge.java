@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
+import java.util.regex.Pattern;
 import jssc.SerialPortList;
 import jssc.SerialPortTimeoutException;
 import org.fusesource.hawtbuf.Buffer;
@@ -138,7 +139,15 @@ public class MQTTSerialBridge {
         
         for (;;) {
             // List serial ports
-            String[] portNames = SerialPortList.getPortNames();
+            
+            String[] portNames;
+            if (System.getProperty("os.name").toLowerCase().contains("os x")) {
+                portNames = SerialPortList.getPortNames("/dev/", Pattern.compile("(tty.(serial|usbserial|usbmodem).*)|cu.*"));
+            } else {
+                portNames = SerialPortList.getPortNames();
+            }
+            
+            
 
             System.out.println("Serial ports: " + Arrays.toString(portNames));
 
