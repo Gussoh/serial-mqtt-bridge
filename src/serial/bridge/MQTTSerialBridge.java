@@ -39,7 +39,7 @@ public class MQTTSerialBridge {
     
     private static final String PRESENCE_TOPIC = "mqtt-bridge-presence";
     
-    private HashMap<String, List<SerialConnection>> subscriptions = new HashMap<>();
+    private HashMap<String, Set<SerialConnection>> subscriptions = new HashMap<>();
     
     /**
      * Things which are following the protocol
@@ -98,7 +98,7 @@ public class MQTTSerialBridge {
             @Override
             public void onPublish(UTF8Buffer topic, Buffer payload, Runnable ack) {
 
-                List<SerialConnection> subscribers = subscriptions.get(topic.toString());
+                Set<SerialConnection> subscribers = subscriptions.get(topic.toString());
                 System.out.println("Incoming message: " + payload.toString() + " subscribers: " + subscribers);
                 if (subscribers != null) {
                     for (SerialConnection subscriber : subscribers) {
@@ -150,6 +150,8 @@ public class MQTTSerialBridge {
             
 
             System.out.println("Serial ports: " + Arrays.toString(portNames));
+            
+            System.out.println("Serial ports number " + portNames.length);
 
             if (portNames.length == 0) {
                 System.out.println("No Comm ports!");
@@ -164,14 +166,25 @@ public class MQTTSerialBridge {
                     
                     int nrOfAttempts = 3;
                     for (int i = 0; i < nrOfAttempts; i++) { 
+                        System.out.println("Port " + portName + " attempt " + (i+1));
+                        SerialConnection conn = null;
                         try {
-                            new SerialConnection(portName, this);
+                            conn=new SerialConnection(portName, this);
                             handledSerialPorts.add(portName);
+                           break;
                         } catch (SerialPortTimeoutException e) {
                             System.out.println("No answer on port " + portName);
                             notHandledSerialPorts.add(portName);
+                            conn =null;
                             break;
-                        } catch (Exception e) {
+                        } 
+                        catch(IncorrectDeviceException id){
+                            System.out.println("The devices doesn't follow the protocol");
+                            notHandledSerialPorts.add(portName);
+                            conn = null;
+                            break;
+                        }
+                        catch (Exception e) {
                             System.out.println("No good port: " + portName);
                             System.out.println("Got exception: " + e + ", " + e.getMessage());
                             if (i == nrOfAttempts - 1) { // last attempt
@@ -180,6 +193,7 @@ public class MQTTSerialBridge {
                                 System.out.println("Trying same port again...");
                                 Thread.sleep(2000);
                             }
+                             conn =null;
                         }
                     }
                 }
@@ -196,9 +210,9 @@ public class MQTTSerialBridge {
     }
 
     void subscribe(final SerialConnection subscriber, final String topic) {
-        List<SerialConnection> subscribers = subscriptions.get(topic);
+        Set<SerialConnection> subscribers = subscriptions.get(topic);
         if (subscribers == null) {
-            subscribers = new ArrayList<>();
+            subscribers = new HashSet<>();
             subscribers.add(subscriber);
             subscriptions.put(topic, subscribers);
         } else {
@@ -209,6 +223,7 @@ public class MQTTSerialBridge {
 
             @Override
             public void onSuccess(byte[] t) {
+                
                 System.out.println(subscriber.getName() + " subscribed to topic: " + topic);
             }
 
