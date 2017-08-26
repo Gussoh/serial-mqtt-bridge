@@ -141,6 +141,8 @@ public class SerialConnection {
                     @Override
                     public void onFailure(Throwable thrwbl) {
                         System.err.println(time + " Could not send to MQTT:\n" + thrwbl);
+                        System.err.println("Can't solve the problem. Quitting and expecting a restart.");
+                        System.exit(3);
                     }
                 });
             }
