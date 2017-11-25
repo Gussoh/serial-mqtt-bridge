@@ -1,20 +1,19 @@
 # serial-mqtt-bridge
 A bridge between virtual serial port devices such as eg. an Arduino and an MQTT broker
 
-It scans trough all comports every now and then and connects to ports it has not seen before.
+It scans trough all serial ports every now and then and connects to ports it is currently not connected to.
 It connects with 9600 bps.
 
-If the device's first characters are "###" it assumes it follows protocol and starts parsing. 
-The format of the first line is this: First "###". Until the first comma the content is parsed as the units name. After the next commas is the protocol version.
-Example: ###My device,1###
+If a device follows the format then it starts parsing. With protocol version 1 the presence message must be sent within 25 seconds. With version 2 the presence message must be sent at least every 25 seconds. This helps with removing stale connections.
+Example: ###My device,2###
 Name: My device,
-Protocol version: 1 (1 is the only version currently available)
+Protocol version: 2
 
-The rest of the protocol is as follows (Version 1):
+The rest of the protocol is as follows (Version 1 & 2):
 
 | Line starts with  | Meaning | Example |
 | ----------------- | ------- | ------- |
-| ###  | First line and protocol metadata | ###sensorthing,1### |
+| ###  | Presence message. Protocol metadata | ###sensorthing,2### |
 | $  | Message  | $coolSensorDevice/sensor##34.2### |
 | @  | Persistent message  | @coolSensorDevice/sensor##34.2### |
 | <  | A subscription. Anything on the message of this topic is sent to the device | <device/command### |
