@@ -11,8 +11,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 import jssc.SerialPortList;
@@ -44,7 +46,7 @@ public class MQTTSerialBridge {
     /**
      * Things which are following the protocol
      */
-    private Set<String> handledSerialPorts = new HashSet<>();
+    private Map<String, SerialConnection> handledSerialPorts = new ConcurrentHashMap<>();
     /**
      * Other things. Don't connect again.
      * This will never try actual, real com ports twice which is kind of bad but we only support virtual COM-ports
@@ -138,8 +140,16 @@ public class MQTTSerialBridge {
         waitForMqttConnect.acquire();
         
         for (;;) {
+            for (Map.Entry<String, SerialConnection> entrySet : handledSerialPorts.entrySet()) {
+                SerialConnection conn = entrySet.getValue();
+                if (conn.getVersion() == 2 || conn.getVersion() == 0) { // version 2 or no version set.
+                    if (System.currentTimeMillis() - conn.getLastPresence() > 25000) {
+                        conn.onTimeout();
+                    }
+                }
+            }
+
             // List serial ports
-            
             String[] portNames;
             if (System.getProperty("os.name").toLowerCase().contains("os x")) {
                 portNames = SerialPortList.getPortNames("/dev/", Pattern.compile("(tty.(serial|usbserial|usbmodem).*)|cu.*"));
@@ -147,61 +157,40 @@ public class MQTTSerialBridge {
                 portNames = SerialPortList.getPortNames();
             }
             
-            
-
             System.out.println("Serial ports: " + Arrays.toString(portNames));
             
-            System.out.println("Serial ports number " + portNames.length);
-
             if (portNames.length == 0) {
-                System.out.println("No Comm ports!");
+                System.out.println("No ports!");
             } else {
                 Set<String> currentPorts = new HashSet<>();
                 for (String portName : portNames) {
                     currentPorts.add(portName);
                     
-                    if (notHandledSerialPorts.contains(portName) || handledSerialPorts.contains(portName)) {
+                    if (notHandledSerialPorts.contains(portName) || handledSerialPorts.containsKey(portName)) {
                         continue;
                     }
                     
-                    int nrOfAttempts = 3;
-                    for (int i = 0; i < nrOfAttempts; i++) { 
-                        System.out.println("Port " + portName + " attempt " + (i+1));
-                        SerialConnection conn = null;
-                        try {
-                            conn=new SerialConnection(portName, this);
-                            handledSerialPorts.add(portName);
-                           break;
-                        } catch (SerialPortTimeoutException e) {
-                            System.out.println("No answer on port " + portName);
-                            notHandledSerialPorts.add(portName);
-                            conn =null;
-                            break;
-                        } 
-                        catch(IncorrectDeviceException id){
-                            System.out.println("The devices doesn't follow the protocol");
-                            notHandledSerialPorts.add(portName);
-                            conn = null;
-                            break;
-                        }
-                        catch (Exception e) {
-                            System.out.println("No good port: " + portName);
-                            System.out.println("Got exception: " + e + ", " + e.getMessage());
-                            if (i == nrOfAttempts - 1) { // last attempt
-                                notHandledSerialPorts.add(portName);
-                            } else {
-                                System.out.println("Trying same port again...");
-                                Thread.sleep(2000);
-                            }
-                             conn =null;
-                        }
+                    SerialConnection conn = null;
+                    try {
+                        conn = new SerialConnection(portName, this);
+                        handledSerialPorts.put(portName, conn);
+                        Thread.sleep(1000);
+                    } catch (SerialPortTimeoutException e) {
+                        System.out.println("No answer on port " + portName);
+                        notHandledSerialPorts.add(portName);
+                        conn =null;
+                        break;
+                    } catch (Exception e) {
+                        System.out.println("No good port: " + portName);
+                        System.out.println("Got exception: " + e + ", " + e.getMessage());
                     }
+                    
                 }
                 
                 notHandledSerialPorts.retainAll(currentPorts); // remove all disconnected serial ports which are no longer connected.
             }
             
-            Thread.sleep(15000);
+            Thread.sleep(5000);
         }
     }
     

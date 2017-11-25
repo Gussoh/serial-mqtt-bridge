@@ -32,6 +32,9 @@ public class SerialConnection {
     
     StringBuilder incomingLine = new StringBuilder();
     
+    int version = 0;
+    long lastPresence = System.currentTimeMillis();
+    
     public SerialConnection(String portName, final MQTTSerialBridge bridge) throws SerialPortException, SerialPortTimeoutException, IncorrectDeviceException {
         this.portName = portName;
         this.bridge = bridge;
@@ -47,13 +50,6 @@ public class SerialConnection {
         serialPort.closePort(); // try close and open again to see if we can get in sync.. dont know why it doesnt always work.
         serialPort.openPort();
         
-        String firstChars = serialPort.readString(3, 5000);
-        if (!firstChars.equalsIgnoreCase("###")) { // Make sure it is one of our arduinos or similar.
-            String totalData = firstChars + serialPort.readString();
-            serialPort.closePort();
-            throw new IncorrectDeviceException(totalData);
-        }
-        
         serialPort.addEventListener(new SerialPortEventListener() {
                 
             @Override
@@ -66,8 +62,8 @@ public class SerialConnection {
                             if (receivedData.charAt(i) == '\n') {
                                 if (incomingLine.length() > 0) {
                                     String line = incomingLine.toString();
+                                    parseLine(line);
                                     incomingLine = new StringBuilder();
-                                    parseLine(line.trim());   
                                 }
                             } else {
                                 incomingLine.append(receivedData.charAt(i));
@@ -87,36 +83,42 @@ public class SerialConnection {
                 }
             }
         }, SerialPort.MASK_RXCHAR);
+        
+        
     }
     
     private void parseLine(String line) throws ProtocolMalformedException {
         final String time = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mmX").withZone(ZoneOffset.UTC).format(Instant.now());
         
         line = line.trim();
-        if (name == null) { // first line
-            if (!line.endsWith("###")) {
-                System.out.println("Protocol malformed. Missing ### in the end of the first line. ");
-                try {
-                    serialPort.closePort();
-                } catch (SerialPortException ex) {
-                }
-                throw new ProtocolMalformedException("Missing ### in the end of the first line. ");
-            }
-            line = line.substring(0, line.length() - 3); // remove the last ###
+        
+        System.out.print(time + " " + portName + " - " + name + ": ");
+        System.out.println(line);
+        
+        if (line.startsWith("###") && line.endsWith("###")) { // looking for presence message
+            line = line.substring(3, line.length() - 3); // remove the last ###
             String[] parts = line.split(",");
             if (parts.length < 2) {
                 throw new ProtocolMalformedException("Missing name or protocol identifier");
             }
-            name = parts[0];
             String versionStr = parts[1];
-            if (!versionStr.equals("1")) {
+            try {
+            version = Integer.parseInt(versionStr);
+            } catch (NumberFormatException e) {
                 throw new ProtocolMalformedException("Can not understand protocol version: " + versionStr);
             }
-            System.out.println("Serial port got name: " + name);
+            if (version != 1 && version != 2) {
+                throw new ProtocolMalformedException("Can not understand protocol version: " + versionStr);
+            }
+            name = parts[0];
+            lastPresence = System.currentTimeMillis();
             return;
         }
-        System.out.print(time + " " + name + ": ");
-        System.out.println(line);
+        
+        if (version == 0) {
+            System.out.println("-- Ignore message. Waiting for presence message.");
+            return;
+        }
         
         if (line.endsWith("###")) {
             line = line.substring(0, line.length() - 3); // remove the last ###
@@ -185,5 +187,27 @@ public class SerialConnection {
     @Override
     public String toString() {
         return getName();
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public long getLastPresence() {
+        return lastPresence;
+    }
+    
+    /**
+     * invoked if presence has not been set for a long time in version 2 of protocol
+     */
+    public void onTimeout() {
+        try {
+            serialPort.closePort();
+        } catch (SerialPortException ex1) {
+            Logger.getLogger(SerialConnection.class.getName()).log(Level.SEVERE, null, ex1);
+        }
+        System.err.println("No presence for a long time from: " + name + " - " + serialPort.getPortName());
+
+        bridge.errorOccured(SerialConnection.this);
     }
 }
